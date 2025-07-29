@@ -629,6 +629,339 @@
         }
     }
 
+    // DeepSpaceManager - JWST-Inspired Deep Space Objects
+    class DeepSpaceManager {
+        constructor(eventBus, scene) {
+            this.eventBus = eventBus;
+            this.scene = scene;
+            this.deepSpaceObjects = [];
+            this.jwstCatalog = {
+                "Pillars of Creation": {
+                    type: "nebula",
+                    colors: [0x8B4513, 0xCD853F, 0xD2691E, 0xFF6347],
+                    size: { min: 800, max: 1200 },
+                    distance: { min: 8000, max: 15000 },
+                    shape: "pillar"
+                },
+                "Carina Nebula": {
+                    type: "nebula", 
+                    colors: [0xFF69B4, 0xFF1493, 0xDC143C, 0xFF4500],
+                    size: { min: 1000, max: 1500 },
+                    distance: { min: 10000, max: 18000 },
+                    shape: "spiral"
+                },
+                "Andromeda Galaxy": {
+                    type: "galaxy",
+                    colors: [0x4169E1, 0x1E90FF, 0x00BFFF, 0x87CEEB],
+                    size: { min: 1200, max: 2000 },
+                    distance: { min: 12000, max: 20000 },
+                    shape: "spiral"
+                },
+                "Orion Nebula": {
+                    type: "nebula",
+                    colors: [0x00CED1, 0x20B2AA, 0x48D1CC, 0x40E0D0],
+                    size: { min: 600, max: 1000 },
+                    distance: { min: 6000, max: 12000 },
+                    shape: "cloud"
+                },
+                "Whirlpool Galaxy": {
+                    type: "galaxy",
+                    colors: [0x9370DB, 0x8A2BE2, 0x9932CC, 0xBA55D3],
+                    size: { min: 1000, max: 1600 },
+                    distance: { min: 10000, max: 16000 },
+                    shape: "spiral"
+                }
+            };
+        }
+
+        generateDeepSpaceObjects(prng, count = 3) {
+            this.cleanupDeepSpaceObjects();
+            
+            const catalogEntries = Object.entries(this.jwstCatalog);
+            const selectedObjects = [];
+            
+            for (let i = 0; i < count; i++) {
+                const [name, config] = catalogEntries[Math.floor(prng() * catalogEntries.length)];
+                const distance = config.distance.min + prng() * (config.distance.max - config.distance.min);
+                const angle = prng() * Math.PI * 2;
+                const elevation = (prng() - 0.5) * 2000;
+                
+                const object = this.createDeepSpaceObject(name, config, distance, angle, elevation, prng);
+                this.deepSpaceObjects.push(object);
+                selectedObjects.push(name);
+            }
+            
+            this.eventBus.publish('deepspace:objectsGenerated', selectedObjects);
+            return selectedObjects;
+        }
+
+        createDeepSpaceObject(name, config, distance, angle, elevation, prng) {
+            const size = config.size.min + prng() * (config.size.max - config.size.min);
+            const color = config.colors[Math.floor(prng() * config.colors.length)];
+            
+            if (config.type === "nebula") {
+                return this.createNebulaObject(name, config, size, distance, angle, elevation, color, prng);
+            } else if (config.type === "galaxy") {
+                return this.createGalaxyObject(name, config, size, distance, angle, elevation, color, prng);
+            }
+        }
+
+        createNebulaObject(name, config, size, distance, angle, elevation, color, prng) {
+            const nebulaGroup = new THREE.Group();
+            nebulaGroup.name = `nebula-${name}`;
+            nebulaGroup.userData = { isGenerated: true, isDeepSpace: true, type: "nebula", name: name };
+            
+            const particleCount = 500 + Math.floor(prng() * 1000);
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const radius = prng() * size;
+                const theta = prng() * Math.PI * 2;
+                const phi = prng() * Math.PI;
+                
+                positions[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
+                positions[i * 3 + 1] = radius * Math.sin(phi) * Math.sin(theta);
+                positions[i * 3 + 2] = radius * Math.cos(phi);
+                
+                const colorVariation = 0.3 + prng() * 0.4;
+                colors[i * 3] = ((color >> 16) & 255) / 255 * colorVariation;
+                colors[i * 3 + 1] = ((color >> 8) & 255) / 255 * colorVariation;
+                colors[i * 3 + 2] = (color & 255) / 255 * colorVariation;
+            }
+            
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 2 + prng() * 3,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.6 + prng() * 0.3,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const nebula = new THREE.Points(geometry, material);
+            nebula.position.set(
+                Math.cos(angle) * distance,
+                elevation,
+                Math.sin(angle) * distance
+            );
+            
+            nebulaGroup.add(nebula);
+            this.scene.add(nebulaGroup);
+            return nebulaGroup;
+        }
+
+        createGalaxyObject(name, config, size, distance, angle, elevation, color, prng) {
+            const galaxyGroup = new THREE.Group();
+            galaxyGroup.name = `galaxy-${name}`;
+            galaxyGroup.userData = { isGenerated: true, isDeepSpace: true, type: "galaxy", name: name };
+            
+            const spiralArms = 2 + Math.floor(prng() * 3);
+            const particleCount = 800 + Math.floor(prng() * 1200);
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount; i++) {
+                const radius = prng() * size;
+                const armAngle = (i % spiralArms) * (Math.PI * 2 / spiralArms);
+                const spiralOffset = (radius / size) * Math.PI * 2;
+                const theta = armAngle + spiralOffset;
+                
+                positions[i * 3] = radius * Math.cos(theta);
+                positions[i * 3 + 1] = (prng() - 0.5) * size * 0.1;
+                positions[i * 3 + 2] = radius * Math.sin(theta);
+                
+                const colorVariation = 0.4 + prng() * 0.6;
+                colors[i * 3] = ((color >> 16) & 255) / 255 * colorVariation;
+                colors[i * 3 + 1] = ((color >> 8) & 255) / 255 * colorVariation;
+                colors[i * 3 + 2] = (color & 255) / 255 * colorVariation;
+            }
+            
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 1.5 + prng() * 2.5,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.7 + prng() * 0.2,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const galaxy = new THREE.Points(geometry, material);
+            galaxy.position.set(
+                Math.cos(angle) * distance,
+                elevation,
+                Math.sin(angle) * distance
+            );
+            
+            galaxyGroup.add(galaxy);
+            this.scene.add(galaxyGroup);
+            return galaxyGroup;
+        }
+
+        cleanupDeepSpaceObjects() {
+            this.deepSpaceObjects.forEach(obj => {
+                if (obj && obj.parent) {
+                    obj.parent.remove(obj);
+                }
+            });
+            this.deepSpaceObjects = [];
+        }
+    }
+
+    // Formula of Creation - Soul Dust System
+    class FormulaOfCreation {
+        constructor(eventBus, scene) {
+            this.eventBus = eventBus;
+            this.scene = scene;
+            this.soulDust = [];
+            this.energyThreshold = 100;
+            this.currentEnergy = 0;
+            this.audioProcessor = null;
+            this.isActive = false;
+            this.init();
+        }
+
+        init() {
+            this.eventBus.subscribe('audio:processed', (data) => this.processAudioData(data));
+            this.eventBus.subscribe('devmode:toggled', () => this.toggleDevMode());
+            this.isActive = true;
+            this.devMode = false; // Initialize dev mode state
+        }
+
+        processAudioData(audioData) {
+            if (!this.isActive) return;
+            
+            const { frequency, amplitude, volume } = audioData;
+            
+            // Generate soul dust from audio
+            if (volume > 0.3) {
+                this.createSoulDust(frequency, amplitude, volume);
+                this.currentEnergy += volume * 10;
+                
+                // Trigger cosmic events at energy thresholds
+                if (this.currentEnergy >= this.energyThreshold) {
+                    this.triggerCosmicEvent();
+                    this.currentEnergy = 0;
+                }
+            }
+        }
+
+        createSoulDust(frequency, amplitude, volume) {
+            const dustCount = Math.floor(volume * 20);
+            
+            for (let i = 0; i < dustCount; i++) {
+                const dust = {
+                    position: new THREE.Vector3(
+                        (Math.random() - 0.5) * 1000,
+                        (Math.random() - 0.5) * 1000,
+                        (Math.random() - 0.5) * 1000
+                    ),
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 2,
+                        (Math.random() - 0.5) * 2
+                    ),
+                    color: this.frequencyToColor(frequency),
+                    life: this.devMode ? 999999 : 1.0, // Permanent in dev mode
+                    decayRate: this.devMode ? 0.0 : (0.02 + Math.random() * 0.03), // No decay in dev mode
+                    isPermanent: this.devMode
+                };
+                
+                this.soulDust.push(dust);
+            }
+        }
+
+        frequencyToColor(frequency) {
+            const hue = (frequency % 1000) / 1000;
+            const color = new THREE.Color().setHSL(hue, 0.8, 0.7);
+            return color;
+        }
+
+        triggerCosmicEvent() {
+            const events = [
+                'cosmic:spawnNova',
+                'cosmic:spawnAsteroidField',
+                'cosmic:spawnEnergyStorm',
+                'cosmic:spawnQuantumFlux',
+                'cosmic:spawnDimensionalRift'
+            ];
+            
+            const randomEvent = events[Math.floor(Math.random() * events.length)];
+            this.eventBus.publish(randomEvent);
+        }
+
+        toggleDevMode() {
+            this.devMode = !this.devMode;
+            if (this.devMode) {
+                this.eventBus.publish('genesis:log', { 
+                    name: 'Formula of Creation', 
+                    value: 'Developer Mode Active - Sound Brush Enabled', 
+                    type: 'warn' 
+                });
+            }
+        }
+
+        update() {
+            // Update soul dust particles
+            for (let i = this.soulDust.length - 1; i >= 0; i--) {
+                const dust = this.soulDust[i];
+                dust.position.add(dust.velocity);
+                dust.life -= dust.decayRate;
+                
+                if (dust.life <= 0) {
+                    this.soulDust.splice(i, 1);
+                }
+            }
+        }
+
+        render() {
+            // Render soul dust as glowing particles
+            if (this.soulDust.length > 0) {
+                const positions = new Float32Array(this.soulDust.length * 3);
+                const colors = new Float32Array(this.soulDust.length * 3);
+                
+                for (let i = 0; i < this.soulDust.length; i++) {
+                    const dust = this.soulDust[i];
+                    positions[i * 3] = dust.position.x;
+                    positions[i * 3 + 1] = dust.position.y;
+                    positions[i * 3 + 2] = dust.position.z;
+                    
+                    colors[i * 3] = dust.color.r * dust.life;
+                    colors[i * 3 + 1] = dust.color.g * dust.life;
+                    colors[i * 3 + 2] = dust.color.b * dust.life;
+                }
+                
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                
+                const material = new THREE.PointsMaterial({
+                    size: 3,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 0.8,
+                    blending: THREE.AdditiveBlending
+                });
+                
+                const points = new THREE.Points(geometry, material);
+                this.scene.add(points);
+                
+                // Remove after rendering
+                setTimeout(() => {
+                    this.scene.remove(points);
+                    geometry.dispose();
+                    material.dispose();
+                }, 100);
+            }
+        }
+    }
+
     class MachineLearningCore {
          constructor(eventBus, uiManager) {
             this.eventBus = eventBus;
@@ -1327,6 +1660,13 @@
              this.eventBus.subscribe('devmode:toggled', () => this.toggleDevMode());
              this.eventBus.subscribe('ui:toggleAmbientAudio', (isEnabled) => this.toggleAmbientAudio(isEnabled)); // NEW
 
+             // NEW: Cosmic event handlers for Formula of Creation
+             this.eventBus.subscribe('cosmic:spawnNova', () => this.spawnNova());
+             this.eventBus.subscribe('cosmic:spawnAsteroidField', () => this.spawnAsteroidField());
+             this.eventBus.subscribe('cosmic:spawnEnergyStorm', () => this.spawnEnergyStorm());
+             this.eventBus.subscribe('cosmic:spawnQuantumFlux', () => this.spawnQuantumFlux());
+             this.eventBus.subscribe('cosmic:spawnDimensionalRift', () => this.spawnDimensionalRift());
+
              this.eventBus.subscribe('audio:data', ({raw}) => {
                 const volume = raw.reduce((a, b) => a + b) / raw.length / 255;
                 this.cosmicPulse = volume;
@@ -1382,6 +1722,13 @@
             }
 
             this.createNebula(starColor);
+
+            // NEW: Generate JWST-inspired deep space objects
+            if (window.deepSpaceManager) {
+                const deepSpaceCount = 2 + Math.floor(this.prng() * 3); // 2-4 objects
+                const selectedObjects = window.deepSpaceManager.generateDeepSpaceObjects(this.prng, deepSpaceCount);
+                this.uiManager.log(`Generated ${selectedObjects.length} JWST-inspired deep space objects: ${selectedObjects.join(', ')}`, 'data');
+            }
 
             this.hiddenEcho = this.createEchoParticle();
             this.scene.add(this.hiddenEcho);
@@ -1469,6 +1816,161 @@
             disk.rotation.x = Math.PI / 2;
             blackHole.add(disk);
             blackHole.userData.disk = disk;
+        }
+
+        // NEW: Cosmic Event Methods for Formula of Creation
+        spawnNova() {
+            const nova = new THREE.Mesh(
+                new THREE.SphereGeometry(50, 32, 32),
+                new THREE.ShaderMaterial({
+                    uniforms: { time: { value: 0 }, intensity: { value: 1.0 } },
+                    vertexShader: `varying vec3 vNormal; void main() { vNormal = normal; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+                    fragmentShader: `
+                        uniform float time; uniform float intensity;
+                        varying vec3 vNormal;
+                        void main() {
+                            float pulse = sin(time * 10.0) * 0.5 + 0.5;
+                            vec3 color = mix(vec3(1.0, 0.8, 0.2), vec3(1.0, 0.4, 0.1), pulse);
+                            gl_FragColor = vec4(color * intensity * pulse, 1.0);
+                        }`,
+                    transparent: true, blending: THREE.AdditiveBlending
+                })
+            );
+            
+            const dist = 2000 + this.prng() * 3000;
+            const angle = this.prng() * Math.PI * 2;
+            nova.position.set(Math.cos(angle) * dist, this.prng() * 400 - 200, Math.sin(angle) * dist);
+            nova.userData = { isGenerated: true, isNova: true, life: 5.0 };
+            this.scene.add(nova);
+            this.uiManager.log("Cosmic nova explosion detected!", "warn");
+        }
+
+        spawnAsteroidField() {
+            const asteroidCount = 100 + this.prng() * 200;
+            const positions = new Float32Array(asteroidCount * 3);
+            const colors = new Float32Array(asteroidCount * 3);
+            
+            for (let i = 0; i < asteroidCount; i++) {
+                const dist = 1500 + this.prng() * 2000;
+                const angle = this.prng() * Math.PI * 2;
+                positions[i * 3] = Math.cos(angle) * dist;
+                positions[i * 3 + 1] = (this.prng() - 0.5) * 500;
+                positions[i * 3 + 2] = Math.sin(angle) * dist;
+                
+                const color = new THREE.Color().setHSL(this.prng(), 0.3, 0.5);
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+            
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 2 + this.prng() * 3,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const asteroidField = new THREE.Points(geometry, material);
+            asteroidField.userData = { isGenerated: true, isAsteroidField: true };
+            this.scene.add(asteroidField);
+            this.uiManager.log("Asteroid field materialized from quantum fluctuations!", "data");
+        }
+
+        spawnEnergyStorm() {
+            const storm = new THREE.Mesh(
+                new THREE.SphereGeometry(300, 16, 16),
+                new THREE.ShaderMaterial({
+                    uniforms: { time: { value: 0 } },
+                    vertexShader: `varying vec3 vPosition; void main() { vPosition = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+                    fragmentShader: `
+                        uniform float time;
+                        varying vec3 vPosition;
+                        float noise(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 151.7182))) * 43758.5453); }
+                        void main() {
+                            vec3 pos = vPosition * 0.1 + time * 0.5;
+                            float n = noise(pos);
+                            vec3 color = mix(vec3(0.2, 0.8, 1.0), vec3(0.8, 0.2, 1.0), n);
+                            gl_FragColor = vec4(color, 0.3) * n;
+                        }`,
+                    transparent: true, blending: THREE.AdditiveBlending, side: THREE.BackSide
+                })
+            );
+            
+            const dist = 2500 + this.prng() * 2000;
+            const angle = this.prng() * Math.PI * 2;
+            storm.position.set(Math.cos(angle) * dist, this.prng() * 300 - 150, Math.sin(angle) * dist);
+            storm.userData = { isGenerated: true, isEnergyStorm: true };
+            this.scene.add(storm);
+            this.uiManager.log("Energy storm detected - reality distortion field active!", "warn");
+        }
+
+        spawnQuantumFlux() {
+            const fluxCount = 50 + this.prng() * 100;
+            const positions = new Float32Array(fluxCount * 3);
+            const colors = new Float32Array(fluxCount * 3);
+            
+            for (let i = 0; i < fluxCount; i++) {
+                const dist = 1000 + this.prng() * 1500;
+                const angle = this.prng() * Math.PI * 2;
+                positions[i * 3] = Math.cos(angle) * dist;
+                positions[i * 3 + 1] = (this.prng() - 0.5) * 300;
+                positions[i * 3 + 2] = Math.sin(angle) * dist;
+                
+                const color = new THREE.Color().setHSL(this.prng(), 0.9, 0.7);
+                colors[i * 3] = color.r;
+                colors[i * 3 + 1] = color.g;
+                colors[i * 3 + 2] = color.b;
+            }
+            
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            
+            const material = new THREE.PointsMaterial({
+                size: 4 + this.prng() * 6,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.9,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const quantumFlux = new THREE.Points(geometry, material);
+            quantumFlux.userData = { isGenerated: true, isQuantumFlux: true };
+            this.scene.add(quantumFlux);
+            this.uiManager.log("Quantum flux particles detected - spacetime fabric destabilized!", "data");
+        }
+
+        spawnDimensionalRift() {
+            const rift = new THREE.Mesh(
+                new THREE.PlaneGeometry(200, 400),
+                new THREE.ShaderMaterial({
+                    uniforms: { time: { value: 0 } },
+                    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+                    fragmentShader: `
+                        uniform float time;
+                        varying vec2 vUv;
+                        float noise(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+                        void main() {
+                            float n = noise(vUv * 10.0 + time * 2.0);
+                            vec3 color = mix(vec3(0.8, 0.1, 0.9), vec3(0.1, 0.8, 0.9), n);
+                            float edge = smoothstep(0.0, 0.1, vUv.x) * smoothstep(1.0, 0.9, vUv.x);
+                            gl_FragColor = vec4(color, 0.8) * edge * n;
+                        }`,
+                    transparent: true, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+                })
+            );
+            
+            const dist = 3000 + this.prng() * 2000;
+            const angle = this.prng() * Math.PI * 2;
+            rift.position.set(Math.cos(angle) * dist, this.prng() * 200 - 100, Math.sin(angle) * dist);
+            rift.rotation.y = this.prng() * Math.PI * 2;
+            rift.userData = { isGenerated: true, isDimensionalRift: true };
+            this.scene.add(rift);
+            this.uiManager.log("DIMENSIONAL RIFT DETECTED - Reality breach imminent!", "error");
         }
 
         cleanupScene() {
@@ -1711,6 +2213,25 @@
                 if(obj.userData.isNebula) obj.material.uniforms.pulse.value = this.cosmicPulse;
                 if(obj.userData.isArtwork) this.updateArtwork(obj, delta);
                 if(obj.userData.isAutonomous) this.updateAutonomousObject(obj, delta);
+                
+                // NEW: Update cosmic events
+                if(obj.userData.isNova && obj.material.uniforms) {
+                    obj.material.uniforms.time.value = elapsedTime;
+                    if(obj.userData.life !== undefined) {
+                        obj.userData.life -= delta;
+                        if(obj.userData.life <= 0) {
+                            this.scene.remove(obj);
+                            obj.geometry.dispose();
+                            obj.material.dispose();
+                        }
+                    }
+                }
+                if(obj.userData.isEnergyStorm && obj.material.uniforms) {
+                    obj.material.uniforms.time.value = elapsedTime;
+                }
+                if(obj.userData.isDimensionalRift && obj.material.uniforms) {
+                    obj.material.uniforms.time.value = elapsedTime;
+                }
             });
 
             this.specialObjects.forEach(obj => { if (obj.update) obj.update(delta); });
@@ -1723,6 +2244,12 @@
             this.updateCosmicGrowth(delta);
 
             this.atmosphericEntryEffect.update(delta, this.camera, this.planets);
+
+            // NEW: Update Formula of Creation soul dust
+            if (window.formulaOfCreation) {
+                window.formulaOfCreation.update();
+                window.formulaOfCreation.render();
+            }
 
             this.handleCosmicWebView();
             this.updateScanner();
@@ -2090,10 +2617,21 @@
             if (this.isDevMode) {
                 this.soundBrush = new SoundBrush(this.scene, this.camera, this.eventBus);
                 this.uiManager.log("Developer Mode ON: Sound Brush active. Click to paint.", "warn");
+                
+                // NEW: Enhanced Developer Mode with Formula of Creation
+                if (window.formulaOfCreation) {
+                    window.formulaOfCreation.devMode = true;
+                    this.uiManager.log("Formula of Creation: Developer Mode Active - Permanent Soul Dust Creation Enabled", "warn");
+                }
             } else {
                 if (this.soundBrush) this.soundBrush.destroy();
                 this.soundBrush = null;
                 this.uiManager.log("Developer Mode OFF.", "info");
+                
+                // NEW: Disable Formula of Creation dev mode
+                if (window.formulaOfCreation) {
+                    window.formulaOfCreation.devMode = false;
+                }
             }
         }
 
@@ -2240,6 +2778,15 @@
 
             const volume = raw.reduce((a, b) => a + b) / raw.length / 255;
             const numToSpawn = Math.floor(volume * 20);
+
+            // NEW: Send audio data to Formula of Creation for soul dust generation
+            if (window.formulaOfCreation) {
+                window.formulaOfCreation.processAudioData({
+                    frequency: avgFreq,
+                    amplitude: Math.max(...raw) / 255,
+                    volume: volume
+                });
+            }
 
             for (let i = 0; i < numToSpawn; i++) {
                 const pIndex = this.particleCursor;
@@ -2543,6 +3090,14 @@
             this.externalManager = new ExternalDataManager(this.eventBus);
             this.mlCore = new MachineLearningCore(this.eventBus, this.uiManager);
             this.aiAgent = new CosmicAwarenessAgent(this.eventBus, this.dataLogger);
+            
+            // NEW: Deep Space and Formula of Creation Managers
+            this.deepSpaceManager = new DeepSpaceManager(this.eventBus, this.pge.scene);
+            this.formulaOfCreation = new FormulaOfCreation(this.eventBus, this.pge.scene);
+            
+            // Make managers globally accessible
+            window.deepSpaceManager = this.deepSpaceManager;
+            window.formulaOfCreation = this.formulaOfCreation;
 
             this.isStarted = false;
             this.currentMode = 'universe';
