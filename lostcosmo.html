@@ -861,8 +861,8 @@
                 particles.push({ pos, vel: new THREE.Vector3().randomDirection().multiplyScalar(5) });
             }
 
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
 
             const material = new THREE.PointsMaterial({ size: 2, vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.8 });
             const mesh = new THREE.Points(geometry, material);
@@ -1078,6 +1078,90 @@
         }
     }
 
+    // ---------------------------------------------------------------------------
+    // DeepSpaceManager
+    // ---------------------------------------------------------------------------
+    // Generates iconic deep-space objects (nebulae & galaxies) inspired by JWST
+    // imagery and places them far in the distance so each universe is born with
+    // recognizable celestial landmarks.
+    class DeepSpaceManager {
+        constructor() {
+            this.textureLoader = new THREE.TextureLoader();
+            this.catalog = [
+                { name: 'Pillars of Creation', type: 'nebula', url: 'https://cdn.jsdelivr.net/gh/iamscottxu/cosmo-assets@main/pillars_of_creation.jpg' },
+                { name: 'Carina Nebula', type: 'nebula', url: 'https://cdn.jsdelivr.net/gh/iamscottxu/cosmo-assets@main/carina_nebula.jpg' },
+                { name: 'Andromeda Galaxy', type: 'galaxy' },
+                { name: 'Cartwheel Galaxy', type: 'galaxy' }
+            ];
+        }
+
+        generate(scene, prng) {
+            const count = 2 + Math.floor(prng() * 3);
+            for (let i = 0; i < count; i++) {
+                const descriptor = this.catalog[Math.floor(prng() * this.catalog.length)];
+                let mesh;
+                if (descriptor.type === 'nebula') {
+                    mesh = this._createNebulaSprite(descriptor.url);
+                } else if (descriptor.type === 'galaxy') {
+                    mesh = this._createGalaxy(prng);
+                }
+                if (!mesh) continue;
+
+                const dist = 50000 + prng() * 30000;
+                const theta = prng() * Math.PI * 2;
+                const phi = prng() * Math.PI;
+                mesh.position.set(
+                    Math.sin(phi) * Math.cos(theta) * dist,
+                    Math.cos(phi) * dist,
+                    Math.sin(phi) * Math.sin(theta) * dist
+                );
+
+                mesh.userData = { isGenerated: true, isDeepSpace: true, name: descriptor.name };
+                scene.add(mesh);
+            }
+        }
+
+        _createNebulaSprite(url) {
+            const tex = this.textureLoader.load(url);
+            const material = new THREE.SpriteMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
+            const sprite = new THREE.Sprite(material);
+            const scale = 12000;
+            sprite.scale.set(scale, scale, 1);
+            return sprite;
+        }
+
+        _createGalaxy(prng) {
+            const starCount = 3000 + Math.floor(prng() * 4000);
+            const positions = new Float32Array(starCount * 3);
+            const colors = new Float32Array(starCount * 3);
+            const c = new THREE.Color();
+
+            for (let i = 0; i < starCount; i++) {
+                const radius = prng() * 8000;
+                const armOffset = (i % 2) * Math.PI;
+                const angle = (radius / 8000) * Math.PI * 4 + prng() * 0.5 + armOffset;
+
+                const x = Math.cos(angle) * radius;
+                const y = (prng() - 0.5) * 600;
+                const z = Math.sin(angle) * radius;
+
+                positions[i * 3] = x;
+                positions[i * 3 + 1] = y;
+                positions[i * 3 + 2] = z;
+
+                c.setHSL(0.6 + (radius / 16000), 0.8, 0.7);
+                colors[i * 3] = c.r;
+                colors[i * 3 + 1] = c.g;
+                colors[i * 3 + 2] = c.b;
+            }
+
+            const geometry = new THREE.BufferGeometry();
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+            const material = new THREE.PointsMaterial({ size: 40, vertexColors: true, sizeAttenuation: true, transparent: true, opacity: 0.9 });
+            return new THREE.Points(geometry, material);
+        }
+    }
 
     class ProceduralGenerationEngine {
         constructor(eventBus, uiManager) {
@@ -1394,6 +1478,12 @@
             if (this.isAmbientAudioEnabled) {
                 this.proceduralAudio = new ProceduralAudioEngine(this.scene, this.listener, { star: this.activeStar, starTemp: starTemp, planets: this.planets });
             }
+
+            // Generate distant, iconic deep-space objects (galaxies & nebulae)
+            if (!this.deepSpaceManager) {
+                this.deepSpaceManager = new DeepSpaceManager();
+            }
+            this.deepSpaceManager.generate(this.scene, this.prng);
 
             this.uiManager.log("Universe generation complete.", 'success');
         }
